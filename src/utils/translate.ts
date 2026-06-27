@@ -1,39 +1,50 @@
-import { LanguageCode } from "./language";
+import { LanguageCode, languageNameMap } from "./language";
 
-// If using Google API keys client-side, you must restrict the key to only work from your domain(s)!
-// https://cloud.google.com/docs/authentication/api-keys#api_key_restrictions
-const API_KEY = import.meta.env.VITE_GOOGLE_CLOUD_TRANSLATION_API_KEY;
+const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY;
+const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 
 export async function translateText(
-    text: string,
-    targetLanguage: LanguageCode
+  text: string,
+  targetLanguage: LanguageCode
 ): Promise<string> {
-    try {
-        const response = await fetch(
-            `https://translation.googleapis.com/language/translate/v2?key=${API_KEY}`,
-            {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                    q: text,
-                    target: targetLanguage,
-                }),
-            }
-        );
+  try {
+    const languageName = languageNameMap[targetLanguage] || targetLanguage;
 
-        const result = (await response.json()) as TranslationResult;
-        return result.data.translations[0].translatedText;
-    } catch (error) {
-        console.error("Error translating text:", error);
-        return "";
-    }
+    const response = await fetch(GROQ_API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${GROQ_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: "meta-llama/llama-4-scout-17b-16e-instruct",
+        messages: [
+          {
+            role: "system",
+            content: `You are a real-time translator. Translate the following text to ${languageName}. Return ONLY the translated text, nothing else. No explanations, no quotes, no extra text.`,
+          },
+          {
+            role: "user",
+            content: text,
+          },
+        ],
+        temperature: 0.1,
+        max_tokens: 512,
+      }),
+    });
+
+    const result = (await response.json()) as GroqResponse;
+    return result.choices[0]?.message?.content?.trim() || "";
+  } catch (error) {
+    console.error("Error translating text:", error);
+    return "";
+  }
 }
-type TranslationResult = {
-    data: {
-        translations: {
-            translatedText: string;
-        }[];
+
+type GroqResponse = {
+  choices: {
+    message: {
+      content: string;
     };
+  }[];
 };
