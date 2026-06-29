@@ -26,10 +26,7 @@ const Transcript: React.FC = () => {
           </div>
         ) : null}
 
-        {utterances
-          .slice()
-          .reverse()
-          .map((item, index) => {
+        {utterances.map((item, index) => {
             const isNewSpeaker = item.speaker !== lastSpeaker;
             lastSpeaker = item.speaker;
 

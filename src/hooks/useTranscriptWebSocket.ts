@@ -213,13 +213,14 @@ export const useTranscriptWebSocket = (wsUrl: string) => {
                 });
             } else {
                 setFinalizedUtterances((prev) => [
-                    ...prev,
+
                     {
                         id: utteranceId,
                         speaker: transcript.speaker,
                         original: originalText,
                         translations: translationLines,
                     },
+                    ...prev,
                 ]);
                 setCurrentUtterance(null);
             }
@@ -286,7 +287,7 @@ export const useTranscriptWebSocket = (wsUrl: string) => {
     // Consider limiting the number of utterances stored.
     const utterances = useMemo(() => {
         if (currentUtterance) {
-            return [...finalizedUtterances, currentUtterance];
+            return [currentUtterance, ...finalizedUtterances];
         }
         return finalizedUtterances;
     }, [finalizedUtterances, currentUtterance]);
