@@ -9,19 +9,17 @@ const Transcript: React.FC = () => {
 
   const containerRef = useRef<HTMLDivElement | null>(null);
 
+  // New utterances appear at the top of the list (sorted newest-first).
+  // Only auto-scroll to top when the user hasn't scrolled down to read
+  // older messages, so we don't fight the user or cause render-loop freezes.
   useEffect(() => {
     const container = containerRef.current;
+    if (!container) return;
 
-    if (!container) {
-      return;
+    // If the user is near the top (within 150px), keep them pinned there.
+    if (container.scrollTop <= 150) {
+      container.scrollTop = 0;
     }
-
-    requestAnimationFrame(() => {
-      container.scrollTo({
-        top: container.scrollHeight,
-        behavior: "auto",
-      });
-    });
   }, [utterances]);
 
   let lastSpeaker: string | null = null;
