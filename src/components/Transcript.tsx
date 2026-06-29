@@ -35,10 +35,18 @@ const Transcript: React.FC = () => {
 
             return (
               <div key={item.id || index} className="transcript-item">
-                <div className="speaker-column">
-                  {isNewSpeaker && item.speaker ? `${item.speaker}` : ""}
+                <div className="original-column">
+                  <div className="speaker-name">
+                    {isNewSpeaker && item.speaker ? `${item.speaker}` : ""}
+                  </div>
+                  {item.original ? (
+                    <div className="original-text">
+                      Original: {item.original}
+                    </div>
+                  ) : null}
                 </div>
-                <div className="utterance-column">
+
+                <div className="translations-column">
                   {item.translations.map((translation) => (
                     <div
                       key={translation.language}
@@ -51,11 +59,6 @@ const Transcript: React.FC = () => {
                       <span>{translation.text || "(Translating...)"}</span>
                     </div>
                   ))}
-                  {item.original ? (
-                    <div className="original-text">
-                      Original: {item.original}
-                    </div>
-                  ) : null}
                 </div>
               </div>
             );
