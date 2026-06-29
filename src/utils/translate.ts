@@ -7,8 +7,16 @@ export async function translateText(
   text: string,
   targetLanguage: LanguageCode
 ): Promise<string> {
+  const startedAt = performance.now();
+
   try {
     const languageName = languageNameMap[targetLanguage] || targetLanguage;
+
+    console.debug("[translateText] Request started", {
+      targetLanguage,
+      languageName,
+      characterCount: text.length,
+    });
 
     const response = await fetch(GROQ_API_URL, {
       method: "POST",
@@ -33,10 +41,37 @@ export async function translateText(
       }),
     });
 
+    const responseReceivedAt = performance.now();
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+
+      console.error("[translateText] Request failed", {
+        status: response.status,
+        statusText: response.statusText,
+        durationMs: Math.round(responseReceivedAt - startedAt),
+        errorBody,
+      });
+
+      return "";
+    }
+
     const result = (await response.json()) as GroqResponse;
-    return result.choices[0]?.message?.content?.trim() || "";
+    const translatedText = result.choices[0]?.message?.content?.trim() || "";
+
+    console.debug("[translateText] Request completed", {
+      fetchDurationMs: Math.round(responseReceivedAt - startedAt),
+      totalDurationMs: Math.round(performance.now() - startedAt),
+      translatedCharacterCount: translatedText.length,
+    });
+
+    return translatedText;
   } catch (error) {
-    console.error("Error translating text:", error);
+    console.error("[translateText] Error translating text", {
+      durationMs: Math.round(performance.now() - startedAt),
+      error,
+    });
+
     return "";
   }
 }
