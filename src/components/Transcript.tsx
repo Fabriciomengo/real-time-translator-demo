@@ -1,16 +1,10 @@
-import React, { useEffect, useMemo, useRef } from "react";
+import React, { useEffect, useRef } from "react";
 import { useTranscriptWebSocket } from "@/hooks/useTranscriptWebSocket";
-import { languageNameMap } from "@/utils/language";
 import "./Transcript.css";
 
 const Transcript: React.FC = () => {
-  const { utterances, targetLanguage } = useTranscriptWebSocket(
+  const { utterances, translationLegend } = useTranscriptWebSocket(
     "wss://meeting-data.bot.recall.ai/api/v1/transcript"
-  );
-
-  const currentLanguage = useMemo(
-    () => (targetLanguage ? languageNameMap[targetLanguage] : "None"),
-    [targetLanguage]
   );
 
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -23,29 +17,15 @@ const Transcript: React.FC = () => {
 
   let lastSpeaker: string | null = null;
 
-  if (targetLanguage === null) {
-    return (
-      <div className="waiting-message">
-        What language would you like to translate to?
-      </div>
-    );
-  }
-
   return (
-    <>
+    <div className="transcript-wrapper">
       <div className="transcript-container" ref={containerRef}>
         {!utterances.length ? (
           <div className="waiting-message">
             Start speaking to translate in real-time.
           </div>
-        ) : (
-          <div className="language-badge">
-            Translating to:{" "}
-            <span className="language-highlight">
-              {currentLanguage}
-            </span>
-          </div>
-        )}
+        ) : null}
+
         {utterances
           .slice()
           .reverse()
@@ -54,25 +34,50 @@ const Transcript: React.FC = () => {
             lastSpeaker = item.speaker;
 
             return (
-              <div key={index} className="transcript-item">
+              <div key={item.id || index} className="transcript-item">
                 <div className="speaker-column">
-                  {isNewSpeaker && item.speaker
-                    ? `${item.speaker}`
-                    : ""}
+                  {isNewSpeaker && item.speaker ? `${item.speaker}` : ""}
                 </div>
                 <div className="utterance-column">
-                  <div className="translated-text" style={item.color ? { color: item.color } : {}}>
-                    {item.translated || "(Translating...)"}
-                  </div>
-                  <div className="original-text">
-                    {item.original}
-                  </div>
+                  {item.translations.map((translation) => (
+                    <div
+                      key={translation.language}
+                      className="translation-line"
+                      style={{ color: translation.color }}
+                    >
+                      <span className="translation-label">
+                        {translation.label}:
+                      </span>{" "}
+                      <span>{translation.text || "(Translating...)"}</span>
+                    </div>
+                  ))}
+                  {item.original ? (
+                    <div className="original-text">
+                      Original: {item.original}
+                    </div>
+                  ) : null}
                 </div>
               </div>
             );
           })}
       </div>
-    </>
+
+      <div className="translation-legend">
+        {translationLegend.map((translation) => (
+          <div key={translation.language} className="legend-item">
+            <span
+              className="legend-color"
+              style={{ backgroundColor: translation.color }}
+            />
+            <span>{translation.label}</span>
+          </div>
+        ))}
+        <div className="legend-item original-legend">
+          <span className="legend-color original-color" />
+          <span>Original</span>
+        </div>
+      </div>
+    </div>
   );
 };
 

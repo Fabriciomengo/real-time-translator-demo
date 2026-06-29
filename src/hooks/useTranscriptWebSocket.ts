@@ -1,10 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LanguageCode, languageNameMap } from "@/utils/language";
 import { translateText } from "@/utils/translate";
-import {
-    detectLanguageChangeCommand,
-    findLanguageInText,
-} from "@/utils/language";
+import { detectLanguageChangeCommand } from "@/utils/language";
 
 interface Word {
     text: string;
@@ -27,20 +24,63 @@ interface TranscriptMessage {
     transcript: Transcript;
 }
 
+export interface TranslationLine {
+    language: LanguageCode;
+    label: string;
+    text: string;
+    color: string;
+}
+
 interface Utterance {
     id: string;
     speaker: string | null;
     original: string;
-    translated: string;
+    translations: TranslationLine[];
     color?: string;
 }
 
     const RECONNECT_RETRY_INTERVAL_MS = 3000;
 
+const BASE_TRANSLATION_LANGUAGES: TranslationLine[] = [
+    {
+        language: LanguageCode.English,
+        label: languageNameMap[LanguageCode.English],
+        text: "",
+        color: "#60a5fa",
+    },
+    {
+        language: LanguageCode.Spanish,
+        label: languageNameMap[LanguageCode.Spanish],
+        text: "",
+        color: "#facc15",
+    },
+];
+
+const getTranslationLines = (
+    optionalLanguage?: LanguageCode
+): TranslationLine[] => {
+    const baseLanguages = BASE_TRANSLATION_LANGUAGES.map((translation) => ({
+        ...translation,
+    }));
+
+    if (
+        optionalLanguage &&
+        optionalLanguage !== LanguageCode.English &&
+        optionalLanguage !== LanguageCode.Spanish
+    ) {
+        baseLanguages.push({
+            language: optionalLanguage,
+            label: languageNameMap[optionalLanguage],
+            text: "",
+            color: "#c084fc",
+        });
+    }
+
+    return baseLanguages;
+};
+
 export const useTranscriptWebSocket = (wsUrl: string) => {
-    const targetLanguageRef = useRef<LanguageCode | undefined>(
-        import.meta.env.VITE_DEFAULT_TARGET_LANGUAGE_CODE
-    );
+    const optionalLanguageRef = useRef<LanguageCode | undefined>(undefined);
     const wsRef = useRef<WebSocket | null>(null);
     const retryIntervalRef = useRef<number | null>(null);
 
@@ -50,10 +90,14 @@ export const useTranscriptWebSocket = (wsUrl: string) => {
     const [currentUtterance, setCurrentUtterance] = useState<Utterance | null>(
         null
     );
+    const [optionalLanguage, setOptionalLanguage] = useState<
+        LanguageCode | undefined
+    >(undefined);
 
     useEffect(() => {
         const updateFinalizedUtteranceTranslation = (
             utteranceId: string,
+            language: LanguageCode,
             translated: string
         ) => {
             setFinalizedUtterances((prev) =>
@@ -61,74 +105,118 @@ export const useTranscriptWebSocket = (wsUrl: string) => {
                     item.id === utteranceId
                         ? {
                               ...item,
-                              translated,
+                              translations: item.translations.map(
+                                  (translation) =>
+                                      translation.language === language
+                                          ? {
+                                                ...translation,
+                                                text: translated,
+                                            }
+                                          : translation
+                              ),
                           }
                         : item
                 )
             );
         };
 
+        const translateUtterance = async (
+            utteranceId: string,
+            originalText: string,
+            isFinal: boolean,
+            languages: LanguageCode[]
+        ) => {
+            await Promise.all(
+                languages.map(async (language) => {
+                    const translated = await translateText(
+                        originalText,
+                        language
+                    );
+
+                    if (!isFinal) {
+                        setCurrentUtterance((prev) => {
+                            // Ignore stale translations from older partial transcript messages.
+                            if (
+                                !prev ||
+                                prev.id !== utteranceId ||
+                                prev.original !== originalText
+                            ) {
+                                return prev;
+                            }
+
+                            return {
+                                ...prev,
+                                translations: prev.translations.map(
+                                    (translation) =>
+                                        translation.language === language
+                                            ? {
+                                                  ...translation,
+                                                  text: translated,
+                                              }
+                                            : translation
+                                ),
+                            };
+                        });
+                        return;
+                    }
+
+                    updateFinalizedUtteranceTranslation(
+                        utteranceId,
+                        language,
+                        translated
+                    );
+                })
+            );
+        };
+
         const handleTranscriptMessage = async (event: MessageEvent) => {
-            const receivedAt = performance.now();
             const message = JSON.parse(event.data) as TranscriptMessage;
             const transcript = message.transcript;
             const originalText = transcript.words
                 .map((word) => word.text)
                 .join(" ");
 
-            console.debug("[transcript] WebSocket message received", {
-                transcriptId: transcript.original_transcript_id,
-                isFinal: transcript.is_final,
-                speaker: transcript.speaker,
-                wordCount: transcript.words.length,
-                characterCount: originalText.length,
-            });
-
-            if (!targetLanguageRef.current) {
-                const targetLanguage = findLanguageInText(originalText);
-                if (targetLanguage) {
-                    targetLanguageRef.current = targetLanguage;
-                    console.debug("[language] Target language detected", {
-                        targetLanguage,
-                        languageName: languageNameMap[targetLanguage],
-                    });
-                }
-                return;
-            }
-
             const newLanguage = detectLanguageChangeCommand(originalText);
             if (newLanguage) {
-                if (newLanguage !== targetLanguageRef.current) {
-                    targetLanguageRef.current = newLanguage;
+                optionalLanguageRef.current = newLanguage;
+                setOptionalLanguage(newLanguage);
 
-                    setFinalizedUtterances((prev) => [
-                        ...prev,
-                        {
-                            id: `language-change-${Date.now()}`,
-                            speaker: null,
-                            original: "",
-                            translated: `Now translating to ${languageNameMap[newLanguage]}`,
-                            color: "#ff8c00",
-                        },
-                    ]);
-                } else {
-                    console.error(`Language not found: ${newLanguage}`);
-                }
+                setFinalizedUtterances((prev) => [
+                    ...prev,
+                    {
+                        id: `language-change-${Date.now()}`,
+                        speaker: null,
+                        original: "",
+                        translations: [
+                            {
+                                language: newLanguage,
+                                label: languageNameMap[newLanguage],
+                                text: `Now also translating to ${languageNameMap[newLanguage]}`,
+                                color: "#ff8c00",
+                            },
+                        ],
+                    },
+                ]);
             }
 
-            const targetLanguage = targetLanguageRef.current;
+            const translationLines = getTranslationLines(
+                optionalLanguageRef.current
+            );
+            const languages = translationLines.map(
+                (translation) => translation.language
+            );
             const utteranceId = `${transcript.original_transcript_id}-${
                 transcript.is_final ? "final" : "current"
             }`;
 
             // Show the transcript immediately before waiting for translation.
-            // The UI already displays "(Translating...)" when translated is empty.
+            // The UI displays "(Translating...)" while each translation is empty.
             if (!transcript.is_final) {
                 setCurrentUtterance({
                     id: utteranceId,
                     speaker: transcript.speaker,
                     original: originalText,
-                    translated: "",
+                    translations: translationLines,
                 });
             } else {
                 setFinalizedUtterances((prev) => [
@@ -137,52 +225,18 @@ export const useTranscriptWebSocket = (wsUrl: string) => {
                         id: utteranceId,
                         speaker: transcript.speaker,
                         original: originalText,
-                        translated: "",
+                        translations: translationLines,
                     },
                 ]);
                 setCurrentUtterance(null);
             }
 
-            const translationStartedAt = performance.now();
-
-            console.debug("[translation] Started", {
-                transcriptId: transcript.original_transcript_id,
-                isFinal: transcript.is_final,
-                targetLanguage,
-                millisecondsSinceMessageReceived: Math.round(
-                    translationStartedAt - receivedAt
-                ),
-            });
-
-            const translated = await translateText(originalText, targetLanguage);
-
-            console.debug("[translation] Finished", {
-                transcriptId: transcript.original_transcript_id,
-                isFinal: transcript.is_final,
-                durationMs: Math.round(performance.now() - translationStartedAt),
-                translatedCharacterCount: translated.length,
-            });
-
-            if (!transcript.is_final) {
-                setCurrentUtterance((prev) => {
-                    // Ignore stale translations from older partial transcript messages.
-                    if (
-                        !prev ||
-                        prev.id !== utteranceId ||
-                        prev.original !== originalText
-                    ) {
-                        return prev;
-                    }
-
-                    return {
-                        ...prev,
-                        translated,
-                    };
-                });
-                return;
-            }
-
-            updateFinalizedUtteranceTranslation(utteranceId, translated);
+            await translateUtterance(
+                utteranceId,
+                originalText,
+                transcript.is_final,
+                languages
+            );
         };
 
         const attemptReconnect = () => {
@@ -244,8 +298,13 @@ export const useTranscriptWebSocket = (wsUrl: string) => {
         return finalizedUtterances;
     }, [finalizedUtterances, currentUtterance]);
 
+    const translationLegend = useMemo(
+        () => getTranslationLines(optionalLanguage),
+        [optionalLanguage]
+    );
+
     return {
         utterances,
-        targetLanguage: targetLanguageRef.current,
+        translationLegend,
     };
 };
