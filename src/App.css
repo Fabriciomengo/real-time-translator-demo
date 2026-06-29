@@ -90,10 +90,10 @@ body {
 /* ─── POWERED BY FOOTER ─── */
 
 .app-footer {
-  position: fixed;
-  bottom: 0;
-  right: 0;
+  flex-shrink: 0;
+  align-self: flex-end;
   padding: 0.5rem 1rem;
+  box-sizing: border-box;
   font-size: 0.75rem;
   color: #666;
 }

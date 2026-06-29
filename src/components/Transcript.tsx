@@ -10,9 +10,18 @@ const Transcript: React.FC = () => {
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (containerRef.current) {
-      containerRef.current.scrollTo(0, 0);
+    const container = containerRef.current;
+
+    if (!container) {
+      return;
     }
+
+    requestAnimationFrame(() => {
+      container.scrollTo({
+        top: container.scrollHeight,
+        behavior: "auto",
+      });
+    });
   }, [utterances]);
 
   let lastSpeaker: string | null = null;
