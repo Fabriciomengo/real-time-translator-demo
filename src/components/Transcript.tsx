@@ -9,11 +9,16 @@ const Transcript: React.FC = () => {
 
   const containerRef = useRef<HTMLDivElement | null>(null);
 
-  // Always scroll to top on any utterance change
+  // Always scroll to top on any utterance change.
+  // Use both immediate and requestAnimationFrame to guarantee it works
+  // even when the DOM is still laying out after a render.
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
     container.scrollTop = 0;
+    requestAnimationFrame(() => {
+      container.scrollTop = 0;
+    });
   }, [utterances]);
 
   return (

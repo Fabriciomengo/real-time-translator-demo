@@ -39,11 +39,11 @@
 
 .transcript-item:first-child .original-text,
 .transcript-item:first-child .translation-line {
-  font-size: 1rem;
+  font-size: 1.5rem;
 }
 
 .transcript-item:first-child .speaker-name {
-  font-size: 1.25rem;
+  font-size: 1.75rem;
 }
 
 .transcript-item:last-child {
@@ -78,7 +78,7 @@
 
 .original-text {
   font-family: "Noto Sans", "Inter", "Segoe UI", "Arial", sans-serif;
-  font-size: 0.75rem;
+  font-size: 1rem;
   line-height: 1.45;
   font-weight: 400;
   color: #ffffff;
@@ -86,7 +86,7 @@
 
 .translation-line {
   font-family: "Noto Sans", "Inter", "Segoe UI", "Arial", sans-serif;
-  font-size: 0.75rem;
+  font-size: 1rem;
   line-height: 1.45;
   font-weight: 400;
   margin-bottom: 0.1rem;
