@@ -10,8 +10,8 @@ const Transcript: React.FC = () => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const prevBaseIdsRef = useRef<string>("");
 
-  // New utterances appear at the top of the list (sorted newest-first).
-  // Only auto-scroll to top when a genuinely new transcript arrives,
+  // New utterances appear at the bottom of the list (sorted oldest-first).
+  // Auto-scroll to bottom when a genuinely new transcript arrives,
   // not when an existing utterance transitions from partial to final
   // or when a translation text updates asynchronously.
   useEffect(() => {
@@ -28,9 +28,13 @@ const Transcript: React.FC = () => {
     const prevIds = prevBaseIdsRef.current;
     prevBaseIdsRef.current = baseIds;
 
-    // Only snap to top when a new base transcript ID appeared
-    if (baseIds !== prevIds && container.scrollTop <= 150) {
-      container.scrollTop = 0;
+    // Only snap to bottom when a new base transcript ID appeared
+    // or when user is already near the bottom (within 150px)
+    const distanceFromBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight;
+
+    if (baseIds !== prevIds && distanceFromBottom <= 150) {
+      container.scrollTop = container.scrollHeight;
     }
   }, [utterances]);
 
