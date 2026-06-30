@@ -67,9 +67,11 @@ export const useTranscriptWebSocket = (wsUrl: string) => {
     const [finalizedUtterances, setFinalizedUtterances] = useState<Utterance[]>(
         []
     );
-    const [currentUtterance, setCurrentUtterance] = useState<Utterance | null>(
-        null
-    );
+    // Map of active partial utterances keyed by original_transcript_id
+    // so multiple speakers' partials can coexist without overwriting each other.
+    const [currentUtterances, setCurrentUtterances] = useState<
+        Map<number, Utterance>
+    >(new Map());
 
     useEffect(() => {
         const getTranscriptSortKey = (transcriptId: number): number => {
@@ -112,6 +114,7 @@ export const useTranscriptWebSocket = (wsUrl: string) => {
         };
 
         const translateUtterance = async (
+            transcriptId: number,
             utteranceId: string,
             originalText: string,
             isFinal: boolean,
@@ -125,18 +128,20 @@ export const useTranscriptWebSocket = (wsUrl: string) => {
                     );
 
                     if (!isFinal) {
-                        setCurrentUtterance((prev) => {
+                        setCurrentUtterances((prev) => {
+                            const existing = prev.get(transcriptId);
                             if (
-                                !prev ||
-                                prev.id !== utteranceId ||
-                                prev.original !== originalText
+                                !existing ||
+                                existing.id !== utteranceId ||
+                                existing.original !== originalText
                             ) {
                                 return prev;
                             }
 
-                            return {
-                                ...prev,
-                                translations: prev.translations.map(
+                            const updated = new Map(prev);
+                            updated.set(transcriptId, {
+                                ...existing,
+                                translations: existing.translations.map(
                                     (translation) =>
                                         translation.language === language
                                             ? {
@@ -145,7 +150,8 @@ export const useTranscriptWebSocket = (wsUrl: string) => {
                                               }
                                             : translation
                                 ),
-                            };
+                            });
+                            return updated;
                         });
                         return;
                     }
@@ -168,22 +174,31 @@ export const useTranscriptWebSocket = (wsUrl: string) => {
 
             const translationLines = getTranslationLines();
             const languages = translationLines.map((t) => t.language);
-            const utteranceId = `${transcript.original_transcript_id}-${
+            const transcriptId = transcript.original_transcript_id;
+            const utteranceId = `${transcriptId}-${
                 transcript.is_final ? "final" : "current"
             }`;
-            const sortKey = getTranscriptSortKey(
-                transcript.original_transcript_id
-            );
+            const sortKey = getTranscriptSortKey(transcriptId);
 
             if (!transcript.is_final) {
-                setCurrentUtterance({
-                    id: utteranceId,
-                    speaker: transcript.speaker,
-                    original: originalText,
-                    translations: translationLines,
-                    sortKey,
+                setCurrentUtterances((prev) => {
+                    const updated = new Map(prev);
+                    updated.set(transcriptId, {
+                        id: utteranceId,
+                        speaker: transcript.speaker,
+                        original: originalText,
+                        translations: translationLines,
+                        sortKey,
+                    });
+                    return updated;
                 });
             } else {
+                setCurrentUtterances((prev) => {
+                    if (!prev.has(transcriptId)) return prev;
+                    const updated = new Map(prev);
+                    updated.delete(transcriptId);
+                    return updated;
+                });
                 setFinalizedUtterances((prev) => [
                     {
                         id: utteranceId,
@@ -194,10 +209,10 @@ export const useTranscriptWebSocket = (wsUrl: string) => {
                     },
                     ...prev,
                 ]);
-                setCurrentUtterance(null);
             }
 
             await translateUtterance(
+                transcriptId,
                 utteranceId,
                 originalText,
                 transcript.is_final,
@@ -256,12 +271,11 @@ export const useTranscriptWebSocket = (wsUrl: string) => {
     }, [wsUrl]);
 
     const utterances = useMemo(() => {
-        const allUtterances = currentUtterance
-            ? [currentUtterance, ...finalizedUtterances]
-            : finalizedUtterances;
+        const partials = Array.from(currentUtterances.values());
+        const allUtterances = [...partials, ...finalizedUtterances];
 
-        return [...allUtterances].sort((a, b) => b.sortKey - a.sortKey);
-    }, [finalizedUtterances, currentUtterance]);
+        return allUtterances.sort((a, b) => b.sortKey - a.sortKey);
+    }, [finalizedUtterances, currentUtterances]);
 
     const translationLegend = getTranslationLines();
 
