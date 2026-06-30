@@ -29,14 +29,11 @@ const Transcript: React.FC = () => {
     prevBaseIdsRef.current = baseIds;
 
     // Always snap to top when a new base transcript ID appeared.
-    // For mere translation updates or partial→final transitions
-    // (where baseIds hasn't changed), only scroll if already near top.
+    // For translation updates or partial→final transitions we do NOT
+    // force scroll — this prevents the "frozen text" visual glitch
+    // caused by resetting scrollTop while item heights are changing.
     if (baseIds !== prevIds) {
       container.scrollTop = 0;
-    } else {
-      if (container.scrollTop <= 150) {
-        container.scrollTop = 0;
-      }
     }
   }, [utterances]);
 
