@@ -193,27 +193,21 @@ export const useTranscriptWebSocket = (wsUrl: string) => {
                 .map((word) => word.text)
                 .join(" ");
 
-            // Only detect language change commands on final transcripts
-            // to avoid false positives from partial/incomplete phrases.
-            if (transcript.is_final) {
-                const newLanguage =
-                    detectLanguageChangeCommand(originalText);
-                if (newLanguage) {
-                    const shouldUseOptionalLanguage =
-                        newLanguage !== LanguageCode.English &&
-                        newLanguage !== LanguageCode.Spanish;
+            const newLanguage = detectLanguageChangeCommand(originalText);
+            if (newLanguage) {
+                const shouldUseOptionalLanguage =
+                    newLanguage !== LanguageCode.English &&
+                    newLanguage !== LanguageCode.Spanish;
 
-                    optionalLanguageRef.current = shouldUseOptionalLanguage
-                        ? newLanguage
-                        : undefined;
-                    setOptionalLanguage(
-                        shouldUseOptionalLanguage ? newLanguage : undefined
-                    );
-                    setCurrentUtterance(null);
-                    setFinalizedUtterances([]);
+                optionalLanguageRef.current = shouldUseOptionalLanguage
+                    ? newLanguage
+                    : undefined;
+                setOptionalLanguage(
+                    shouldUseOptionalLanguage ? newLanguage : undefined
+                );
+                setCurrentUtterance(null);
 
                 return;
-                }
             }
 
             const translationLines = getTranslationLines(
@@ -313,13 +307,41 @@ export const useTranscriptWebSocket = (wsUrl: string) => {
 
     // This could get super long for really long conversations.
     // Consider limiting the number of utterances stored.
+    //
+    // Normalize every utterance's translation lines to match the current
+    // optional language so that switching languages doesn't leave stale
+    // columns from a previous language visible.
     const utterances = useMemo(() => {
+        const currentLines = getTranslationLines(optionalLanguage);
+
+        const normalize = (utterance: Utterance): Utterance => {
+            // Keep translations that belong to the current language set
+            // and preserve their translated text.
+            const normalized: TranslationLine[] = currentLines.map((line) => {
+                const existing = utterance.translations.find(
+                    (t) => t.language === line.language
+                );
+                return existing ?? { ...line };
+            });
+
+            // Only return a new object if the translations actually changed
+            const languagesMatch =
+                utterance.translations.length === normalized.length &&
+                utterance.translations.every(
+                    (t, i) => t.language === normalized[i].language
+                );
+
+            return languagesMatch
+                ? utterance
+                : { ...utterance, translations: normalized };
+        };
+
         const allUtterances = currentUtterance
-            ? [currentUtterance, ...finalizedUtterances]
-            : finalizedUtterances;
+            ? [normalize(currentUtterance), ...finalizedUtterances.map(normalize)]
+            : finalizedUtterances.map(normalize);
 
         return [...allUtterances].sort((a, b) => b.sortKey - a.sortKey);
-    }, [finalizedUtterances, currentUtterance]);
+    }, [finalizedUtterances, currentUtterance, optionalLanguage]);
 
     const translationLegend = useMemo(
         () => getTranslationLines(optionalLanguage),
