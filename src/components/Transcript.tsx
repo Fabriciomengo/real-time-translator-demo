@@ -49,21 +49,27 @@ const Transcript: React.FC = () => {
                 <div className="speaker-name">{item.speaker}</div>
               ) : null}
 
-              <div className="original-text">{item.original}</div>
-
-              {item.translations.map((translation) => (
-                <div key={translation.language} className="translation-line">
-                  <span
-                    className="translation-label"
-                    style={{ color: translation.color }}
-                  >
-                    {translation.label}:
-                  </span>{" "}
-                  <span className="translation-text">
-                    {translation.text || "(Translating...)"}
-                  </span>
+              <div className="transcript-columns">
+                <div className="original-column">
+                  <div className="original-text">{item.original}</div>
                 </div>
-              ))}
+
+                <div className="translations-column">
+                  {item.translations.map((translation) => (
+                    <div key={translation.language} className="translation-line">
+                      <span
+                        className="translation-label"
+                        style={{ color: translation.color }}
+                      >
+                        {translation.label}:
+                      </span>{" "}
+                      <span className="translation-text">
+                        {translation.text || "(Translating...)"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           );
         })}

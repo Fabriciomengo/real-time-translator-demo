@@ -32,8 +32,8 @@
 }
 
 .transcript-item {
-  margin-bottom: 1.25rem;
-  padding-bottom: 1.25rem;
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
@@ -42,28 +42,45 @@
 }
 
 .speaker-name {
-  font-size: 1.5rem;
+  font-size: 1rem;
   line-height: 1.35;
   font-weight: 600;
   color: var(--primary-color, #6366f1);
-  margin-bottom: 0.35rem;
+  margin-bottom: 0.25rem;
+}
+
+.transcript-columns {
+  display: flex;
+  gap: 1.5rem;
+  width: 100%;
+}
+
+.original-column {
+  width: 40%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.translations-column {
+  width: 60%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .original-text {
   font-family: "Noto Sans", "Inter", "Segoe UI", "Arial", sans-serif;
-  font-size: 1rem;
+  font-size: 0.75rem;
   line-height: 1.45;
   font-weight: 400;
   color: #ffffff;
-  margin-bottom: 0.35rem;
 }
 
 .translation-line {
   font-family: "Noto Sans", "Inter", "Segoe UI", "Arial", sans-serif;
-  font-size: 1rem;
+  font-size: 0.75rem;
   line-height: 1.45;
   font-weight: 400;
-  margin-bottom: 0.15rem;
+  margin-bottom: 0.1rem;
 }
 
 .translation-label {
@@ -84,7 +101,7 @@
   border-top: 1px solid var(--secondary-color, #333);
   background-color: var(--bg-color, #1a1a1a);
   box-sizing: border-box;
-  font-size: 1rem;
+  font-size: 0.75rem;
   color: #d0d0d0;
 }
 
@@ -95,8 +112,8 @@
 }
 
 .legend-color {
-  width: 0.85rem;
-  height: 0.85rem;
+  width: 0.65rem;
+  height: 0.65rem;
   border-radius: 50%;
   display: inline-block;
 }
@@ -107,7 +124,7 @@
 
 .waiting-message {
   text-align: center;
-  font-size: 1.2rem;
+  font-size: 0.9rem;
   color: #aaa;
   padding: 3rem 1rem;
 }

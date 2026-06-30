@@ -50,14 +50,16 @@ export async function translateText(
         errorBody,
       });
 
-      return "";
+      // Return original text as fallback so it never shows "(Translating...)" forever
+      return text;
     }
 
     const result = (await response.json()) as GroqResponse;
-    return result.choices[0]?.message?.content?.trim() || "";
+    return result.choices[0]?.message?.content?.trim() || text;
   } catch (error) {
     console.error("Error translating text:", error);
-    return "";
+    // Return original text as fallback
+    return text;
   }
 }
 

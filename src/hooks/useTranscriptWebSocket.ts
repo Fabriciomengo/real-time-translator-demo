@@ -74,6 +74,23 @@ export const useTranscriptWebSocket = (wsUrl: string) => {
     >(new Map());
 
     useEffect(() => {
+        // Queue for processing final transcripts one at a time.
+        // Each final waits for its translation to complete before the next is processed.
+        const finalQueue: (() => Promise<void>)[] = [];
+        let isProcessingQueue = false;
+
+        const processQueue = async () => {
+            if (isProcessingQueue) return;
+            isProcessingQueue = true;
+
+            while (finalQueue.length > 0) {
+                const task = finalQueue.shift()!;
+                await task();
+            }
+
+            isProcessingQueue = false;
+        };
+
         const getTranscriptSortKey = (transcriptId: number): number => {
             const existingSortKey = transcriptOrderRef.current.get(transcriptId);
 
@@ -163,29 +180,34 @@ export const useTranscriptWebSocket = (wsUrl: string) => {
                     return updated;
                 });
             } else {
-                // Remove partial, add to finalized, then translate
-                setCurrentUtterances((prev) => {
-                    if (!prev.has(transcriptId)) return prev;
-                    const updated = new Map(prev);
-                    updated.delete(transcriptId);
-                    return updated;
-                });
-                setFinalizedUtterances((prev) => [
-                    {
-                        id: utteranceId,
-                        speaker: transcript.speaker,
-                        original: originalText,
-                        translations: translationLines,
-                        sortKey,
-                    },
-                    ...prev,
-                ]);
+                // Queue the final transcript for sequential processing.
+                // This ensures translations complete one at a time.
+                finalQueue.push(async () => {
+                    setCurrentUtterances((prev) => {
+                        if (!prev.has(transcriptId)) return prev;
+                        const updated = new Map(prev);
+                        updated.delete(transcriptId);
+                        return updated;
+                    });
+                    setFinalizedUtterances((prev) => [
+                        {
+                            id: utteranceId,
+                            speaker: transcript.speaker,
+                            original: originalText,
+                            translations: translationLines,
+                            sortKey,
+                        },
+                        ...prev,
+                    ]);
 
-                await translateFinalUtterance(
-                    utteranceId,
-                    originalText,
-                    languages
-                );
+                    await translateFinalUtterance(
+                        utteranceId,
+                        originalText,
+                        languages
+                    );
+                });
+
+                processQueue();
             }
         };
 
