@@ -180,26 +180,27 @@ export const useTranscriptWebSocket = (wsUrl: string) => {
                     return updated;
                 });
             } else {
-                // Queue the final transcript for sequential processing.
-                // This ensures translations complete one at a time.
-                finalQueue.push(async () => {
-                    setCurrentUtterances((prev) => {
-                        if (!prev.has(transcriptId)) return prev;
-                        const updated = new Map(prev);
-                        updated.delete(transcriptId);
-                        return updated;
-                    });
-                    setFinalizedUtterances((prev) => [
-                        {
-                            id: utteranceId,
-                            speaker: transcript.speaker,
-                            original: originalText,
-                            translations: translationLines,
-                            sortKey,
-                        },
-                        ...prev,
-                    ]);
+                // Immediately move from partial to finalized
+                // (single render, no gap where the utterance disappears)
+                setCurrentUtterances((prev) => {
+                    if (!prev.has(transcriptId)) return prev;
+                    const updated = new Map(prev);
+                    updated.delete(transcriptId);
+                    return updated;
+                });
+                setFinalizedUtterances((prev) => [
+                    {
+                        id: utteranceId,
+                        speaker: transcript.speaker,
+                        original: originalText,
+                        translations: translationLines,
+                        sortKey,
+                    },
+                    ...prev,
+                ]);
 
+                // Queue the translation so they process one at a time
+                finalQueue.push(async () => {
                     await translateFinalUtterance(
                         utteranceId,
                         originalText,
