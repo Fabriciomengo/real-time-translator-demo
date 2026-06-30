@@ -37,6 +37,15 @@
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
+.transcript-item:first-child .original-text,
+.transcript-item:first-child .translation-line {
+  font-size: 1rem;
+}
+
+.transcript-item:first-child .speaker-name {
+  font-size: 1.25rem;
+}
+
 .transcript-item:last-child {
   border-bottom: none;
 }
