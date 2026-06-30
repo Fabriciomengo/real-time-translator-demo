@@ -8,16 +8,21 @@ const Transcript: React.FC = () => {
   );
 
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const prevUtteranceCountRef = useRef(0);
 
   // New utterances appear at the top of the list (sorted newest-first).
-  // Only auto-scroll to top when the user hasn't scrolled down to read
-  // older messages, so we don't fight the user or cause render-loop freezes.
+  // Only auto-scroll to top when a NEW utterance is added, not when
+  // an existing utterance's translation updates (which would cause
+  // the view to snap back to top on every async translation response).
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
-    // If the user is near the top (within 150px), keep them pinned there.
-    if (container.scrollTop <= 150) {
+    const prevCount = prevUtteranceCountRef.current;
+    prevUtteranceCountRef.current = utterances.length;
+
+    // Only snap to top when a new utterance was actually added
+    if (utterances.length > prevCount && container.scrollTop <= 150) {
       container.scrollTop = 0;
     }
   }, [utterances]);
