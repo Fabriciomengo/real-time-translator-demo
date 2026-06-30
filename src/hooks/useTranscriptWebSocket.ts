@@ -113,11 +113,9 @@ export const useTranscriptWebSocket = (wsUrl: string) => {
             );
         };
 
-        const translateUtterance = async (
-            transcriptId: number,
+        const translateFinalUtterance = async (
             utteranceId: string,
             originalText: string,
-            isFinal: boolean,
             languages: LanguageCode[]
         ) => {
             await Promise.all(
@@ -126,35 +124,6 @@ export const useTranscriptWebSocket = (wsUrl: string) => {
                         originalText,
                         language
                     );
-
-                    if (!isFinal) {
-                        setCurrentUtterances((prev) => {
-                            const existing = prev.get(transcriptId);
-                            if (
-                                !existing ||
-                                existing.id !== utteranceId ||
-                                existing.original !== originalText
-                            ) {
-                                return prev;
-                            }
-
-                            const updated = new Map(prev);
-                            updated.set(transcriptId, {
-                                ...existing,
-                                translations: existing.translations.map(
-                                    (translation) =>
-                                        translation.language === language
-                                            ? {
-                                                  ...translation,
-                                                  text: translated,
-                                              }
-                                            : translation
-                                ),
-                            });
-                            return updated;
-                        });
-                        return;
-                    }
 
                     updateFinalizedUtteranceTranslation(
                         utteranceId,
@@ -181,18 +150,20 @@ export const useTranscriptWebSocket = (wsUrl: string) => {
             const sortKey = getTranscriptSortKey(transcriptId);
 
             if (!transcript.is_final) {
+                // Show original text only — no translation for partials
                 setCurrentUtterances((prev) => {
                     const updated = new Map(prev);
                     updated.set(transcriptId, {
                         id: utteranceId,
                         speaker: transcript.speaker,
                         original: originalText,
-                        translations: translationLines,
+                        translations: [],
                         sortKey,
                     });
                     return updated;
                 });
             } else {
+                // Remove partial, add to finalized, then translate
                 setCurrentUtterances((prev) => {
                     if (!prev.has(transcriptId)) return prev;
                     const updated = new Map(prev);
@@ -209,15 +180,13 @@ export const useTranscriptWebSocket = (wsUrl: string) => {
                     },
                     ...prev,
                 ]);
-            }
 
-            await translateUtterance(
-                transcriptId,
-                utteranceId,
-                originalText,
-                transcript.is_final,
-                languages
-            );
+                await translateFinalUtterance(
+                    utteranceId,
+                    originalText,
+                    languages
+                );
+            }
         };
 
         const attemptReconnect = () => {
