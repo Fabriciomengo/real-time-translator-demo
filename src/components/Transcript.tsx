@@ -8,27 +8,13 @@ const Transcript: React.FC = () => {
   );
 
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const prevBaseIdsRef = useRef<string>("");
 
+  // Always scroll to top on any utterance change
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-
-    const baseIds = utterances
-      .map((u) => u.id.replace(/-(current|final)$/, ""))
-      .filter((id, i, arr) => arr.indexOf(id) === i)
-      .join(",");
-
-    const prevIds = prevBaseIdsRef.current;
-    prevBaseIdsRef.current = baseIds;
-
-    // Always snap to top when a new transcript arrives
-    if (baseIds !== prevIds) {
-      container.scrollTop = 0;
-    }
+    container.scrollTop = 0;
   }, [utterances]);
-
-  let lastSpeaker: string | null = null;
 
   return (
     <div className="transcript-wrapper">
@@ -39,40 +25,35 @@ const Transcript: React.FC = () => {
           </div>
         ) : null}
 
-        {utterances.map((item, index) => {
-          const isNewSpeaker = item.speaker !== lastSpeaker;
-          lastSpeaker = item.speaker;
+        {utterances.map((item, index) => (
+          <div key={item.id || index} className="transcript-item">
+            {item.speaker ? (
+              <div className="speaker-name">{item.speaker}</div>
+            ) : null}
 
-          return (
-            <div key={item.id || index} className="transcript-item">
-              {isNewSpeaker && item.speaker ? (
-                <div className="speaker-name">{item.speaker}</div>
-              ) : null}
+            <div className="transcript-columns">
+              <div className="original-column">
+                <div className="original-text">{item.original}</div>
+              </div>
 
-              <div className="transcript-columns">
-                <div className="original-column">
-                  <div className="original-text">{item.original}</div>
-                </div>
-
-                <div className="translations-column">
-                  {item.translations.map((translation) => (
-                    <div key={translation.language} className="translation-line">
-                      <span
-                        className="translation-label"
-                        style={{ color: translation.color }}
-                      >
-                        {translation.label}:
-                      </span>{" "}
-                      <span className="translation-text">
-                        {translation.text || "(Translating...)"}
-                      </span>
-                    </div>
-                  ))}
-                </div>
+              <div className="translations-column">
+                {item.translations.map((translation) => (
+                  <div key={translation.language} className="translation-line">
+                    <span
+                      className="translation-label"
+                      style={{ color: translation.color }}
+                    >
+                      {translation.label}:
+                    </span>{" "}
+                    <span className="translation-text">
+                      {translation.text || "(Translating...)"}
+                    </span>
+                  </div>
+                ))}
               </div>
             </div>
-          );
-        })}
+          </div>
+        ))}
       </div>
 
       <div className="translation-legend">
