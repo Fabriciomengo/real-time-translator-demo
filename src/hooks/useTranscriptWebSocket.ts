@@ -193,21 +193,27 @@ export const useTranscriptWebSocket = (wsUrl: string) => {
                 .map((word) => word.text)
                 .join(" ");
 
-            const newLanguage = detectLanguageChangeCommand(originalText);
-            if (newLanguage) {
-                const shouldUseOptionalLanguage =
-                    newLanguage !== LanguageCode.English &&
-                    newLanguage !== LanguageCode.Spanish;
+            // Only check for language change commands on final transcripts
+            // to avoid false triggers from partial phrases like "Hey Trans..."
+            if (transcript.is_final) {
+                const newLanguage =
+                    detectLanguageChangeCommand(originalText);
+                if (newLanguage) {
+                    const shouldUseOptionalLanguage =
+                        newLanguage !== LanguageCode.English &&
+                        newLanguage !== LanguageCode.Spanish;
 
-                optionalLanguageRef.current = shouldUseOptionalLanguage
-                    ? newLanguage
-                    : undefined;
-                setOptionalLanguage(
-                    shouldUseOptionalLanguage ? newLanguage : undefined
-                );
-                setCurrentUtterance(null);
+                    optionalLanguageRef.current = shouldUseOptionalLanguage
+                        ? newLanguage
+                        : undefined;
+                    setOptionalLanguage(
+                        shouldUseOptionalLanguage ? newLanguage : undefined
+                    );
+                    setCurrentUtterance(null);
+                    setFinalizedUtterances([]);
 
                 return;
+                }
             }
 
             const translationLines = getTranslationLines(

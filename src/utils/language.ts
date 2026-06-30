@@ -326,32 +326,34 @@ export function getLanguageCodeByName(
 }
 
 /**
- * Detects a language change command in the given text, and returns the language mentioned.
+ * Detects a language change command in the given text.
+ *
+ * The speaker must use an explicit wake phrase to trigger a language change:
+ *   - "Hey Translator" (English)
+ *   - "Hey Traductor" (Spanish)
+ *   - "Hey Proxy" (brand name)
+ *
+ * Followed by a language name, e.g.:
+ *   "Hey Translator, add Japanese"
+ *   "Hey Traductor, cambiar a francés"
+ *   "Hey Proxy, switch to Hindi"
+ *
  * @param text
- * @returns
+ * @returns The detected language code, or null if no valid command was found.
  */
 export function detectLanguageChangeCommand(text: string): LanguageCode | null {
     const normalizedText = normalizeText(text);
 
-    const commandKeywords = [
-        "add",
-        "also",
-        "change",
-        "idioma",
-        "language",
-        "set",
-        "switch",
-        "translate",
-        "traduce",
-        "traducir",
-        "traduzca",
-        "update",
+    const wakePhrases = [
+        "hey translator",
+        "hey traductor",
+        "hey proxy",
     ];
 
-    const containsCommand = commandKeywords.some((keyword) =>
-        normalizedText.includes(keyword)
+    const hasWakePhrase = wakePhrases.some((phrase) =>
+        normalizedText.includes(phrase)
     );
-    if (!containsCommand) return null;
+    if (!hasWakePhrase) return null;
 
     return findLanguageInText(text);
 }
