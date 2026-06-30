@@ -206,6 +206,7 @@ export const useTranscriptWebSocket = (wsUrl: string) => {
                     shouldUseOptionalLanguage ? newLanguage : undefined
                 );
                 setCurrentUtterance(null);
+                setFinalizedUtterances([]);
 
                 return;
             }
