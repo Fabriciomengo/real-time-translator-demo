@@ -38,9 +38,14 @@ interface Utterance {
     sortKey: number;
 }
 
-    const RECONNECT_RETRY_INTERVAL_MS = 3000;
+const RECONNECT_RETRY_INTERVAL_MS = 3000;
 const MAX_UTTERANCES = 10;
 const CLEAR_INTERVAL_MS = 60000;
+
+// Time window to coalesce rapid consecutive finals from the same speaker.
+// If a new final arrives within this window from the same speaker,
+// it gets merged into the previous utterance instead of creating a new one.
+const COALESCE_WINDOW_MS = 1500;
 
 const TRANSLATION_LANGUAGES: TranslationLine[] = [
     {
@@ -65,6 +70,21 @@ export const useTranscriptWebSocket = (wsUrl: string) => {
     const retryIntervalRef = useRef<number | null>(null);
     const transcriptOrderRef = useRef<Map<number, number>>(new Map());
     const nextTranscriptOrderRef = useRef(0);
+
+    // Track the last finalized utterance info for coalescing rapid finals
+    const lastFinalRef = useRef<{
+        speaker: string | null;
+        utteranceId: string;
+        sortKey: number;
+        timestamp: number;
+    } | null>(null);
+
+    // Track coalesce timer so we can debounce translation for coalesced utterances
+    const coalesceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    // Track which original_transcript_ids have already been finalized,
+    // so re-finals for the same ID update in place instead of duplicating.
+    const finalizedIdsRef = useRef<Set<number>>(new Set());
 
     const [finalizedUtterances, setFinalizedUtterances] = useState<Utterance[]>(
         []
@@ -91,7 +111,7 @@ export const useTranscriptWebSocket = (wsUrl: string) => {
             }
 
             isProcessingQueue = false;
-        };
+                    };
 
         const getTranscriptSortKey = (transcriptId: number): number => {
             const existingSortKey = transcriptOrderRef.current.get(transcriptId);
@@ -105,7 +125,7 @@ export const useTranscriptWebSocket = (wsUrl: string) => {
             transcriptOrderRef.current.set(transcriptId, nextSortKey);
 
             return nextSortKey;
-        };
+                    };
 
         const updateFinalizedUtteranceTranslation = (
             utteranceId: string,
@@ -130,13 +150,25 @@ export const useTranscriptWebSocket = (wsUrl: string) => {
                         : item
                 )
             );
-        };
+                    };
 
         const translateFinalUtterance = async (
             utteranceId: string,
-            originalText: string,
             languages: LanguageCode[]
         ) => {
+            // Read the current text from state at translation time,
+            // so coalesced appends are included
+            let originalText = "";
+            setFinalizedUtterances((prev) => {
+                const utterance = prev.find((u) => u.id === utteranceId);
+                if (utterance) {
+                    originalText = utterance.original;
+                }
+                return prev; // no mutation, just reading
+            });
+
+            if (!originalText) return;
+
             await Promise.all(
                 languages.map(async (language) => {
                     const translated = await translateText(
@@ -151,7 +183,42 @@ export const useTranscriptWebSocket = (wsUrl: string) => {
                     );
                 })
             );
-        };
+                    };
+
+        const scheduleTranslation = (
+            utteranceId: string,
+            languages: LanguageCode[]
+        ) => {
+            // Clear any pending coalesce translation timer
+            if (coalesceTimerRef.current) {
+                clearTimeout(coalesceTimerRef.current);
+                coalesceTimerRef.current = null;
+            }
+
+            // Debounce: wait a short period for more words to coalesce,
+            // then queue the translation
+            coalesceTimerRef.current = setTimeout(() => {
+                coalesceTimerRef.current = null;
+
+                // Reset translation lines to show "(Translating...)" fresh
+                setFinalizedUtterances((prev) =>
+                    prev.map((item) =>
+                        item.id === utteranceId
+                            ? {
+                                  ...item,
+                                  translations: getTranslationLines(),
+                              }
+                            : item
+                    )
+                    );
+
+                finalQueue.push(async () => {
+                    await translateFinalUtterance(utteranceId, languages);
+                });
+
+                processQueue();
+            }, COALESCE_WINDOW_MS);
+                    };
 
         const handleTranscriptMessage = async (event: MessageEvent) => {
             const message = JSON.parse(event.data) as TranscriptMessage;
@@ -163,12 +230,10 @@ export const useTranscriptWebSocket = (wsUrl: string) => {
             const translationLines = getTranslationLines();
             const languages = translationLines.map((t) => t.language);
             const transcriptId = transcript.original_transcript_id;
-            const utteranceId = `${transcriptId}-${
-                transcript.is_final ? "final" : "current"
-            }`;
             const sortKey = getTranscriptSortKey(transcriptId);
 
             if (!transcript.is_final) {
+                const utteranceId = `${transcriptId}-current`;
                 // Show original text only — no translation for partials
                 setCurrentUtterances((prev) => {
                     const updated = new Map(prev);
@@ -182,37 +247,101 @@ export const useTranscriptWebSocket = (wsUrl: string) => {
                     return updated;
                 });
             } else {
-                // Immediately move from partial to finalized
-                // (single render, no gap where the utterance disappears)
+                // Remove from partials
                 setCurrentUtterances((prev) => {
                     if (!prev.has(transcriptId)) return prev;
                     const updated = new Map(prev);
                     updated.delete(transcriptId);
                     return updated;
                 });
-                setFinalizedUtterances((prev) => [
-                    {
-                        id: utteranceId,
-                        speaker: transcript.speaker,
-                        original: originalText,
-                        translations: translationLines,
-                        sortKey,
-                    },
-                    ...prev,
-                ].slice(0, MAX_UTTERANCES));
 
-                // Queue the translation so they process one at a time
-                finalQueue.push(async () => {
-                    await translateFinalUtterance(
-                        utteranceId,
-                        originalText,
-                        languages
+                const utteranceId = `${transcriptId}-final`;
+
+                // Check if this transcript ID was already finalized (re-final).
+                // If so, update the existing entry in place — don't add a duplicate.
+                if (finalizedIdsRef.current.has(transcriptId)) {
+                    setFinalizedUtterances((prev) =>
+                        prev.map((item) =>
+                            item.id === utteranceId
+                                ? {
+                                      ...item,
+                                      original: originalText,
+                                      translations: translationLines,
+                                  }
+                                : item
+                        )
                     );
-                });
 
-                processQueue();
+                    // Re-schedule translation for the updated text
+                    scheduleTranslation(utteranceId, languages);
+                    return;
+                }
+
+                const now = Date.now();
+                const lastFinal = lastFinalRef.current;
+
+                // Check if we should coalesce with the previous final utterance
+                const shouldCoalesce =
+                    lastFinal &&
+                    lastFinal.speaker === transcript.speaker &&
+                    now - lastFinal.timestamp < COALESCE_WINDOW_MS;
+
+                if (shouldCoalesce && lastFinal) {
+                    // Append text to the existing utterance instead of creating a new one
+                    const existingUtteranceId = lastFinal.utteranceId;
+
+                    setFinalizedUtterances((prev) =>
+                        prev.map((item) =>
+                            item.id === existingUtteranceId
+                                ? {
+                                      ...item,
+                                      original:
+                                          item.original + " " + originalText,
+                                  }
+                                : item
+                        )
+                    );
+
+                    // Update timestamp so further rapid finals keep coalescing
+                    lastFinal.timestamp = now;
+
+                    // Track this transcript ID as finalized
+                    finalizedIdsRef.current.add(transcriptId);
+
+                    // Re-schedule translation (debounced) for the coalesced utterance
+                    scheduleTranslation(existingUtteranceId, languages);
+                } else {
+                    // Create a new finalized utterance
+
+                    setFinalizedUtterances((prev) =>
+                        [
+                            {
+                                id: utteranceId,
+                                speaker: transcript.speaker,
+                                original: originalText,
+                                translations: translationLines,
+                                sortKey,
+                            },
+                            ...prev,
+                        ].slice(0, MAX_UTTERANCES)
+                    );
+
+                    // Track this transcript ID as finalized
+                    finalizedIdsRef.current.add(transcriptId);
+
+                    // Track this as the last final for coalescing
+                    lastFinalRef.current = {
+                        speaker: transcript.speaker,
+                        utteranceId,
+                        sortKey,
+                        timestamp: now,
+                    };
+
+                    // Schedule translation (debounced in case more words arrive quickly)
+                    scheduleTranslation(utteranceId, languages);
+                }
             }
-        };
+                    };
 
         const attemptReconnect = () => {
             if (!retryIntervalRef.current) {
@@ -221,7 +350,7 @@ export const useTranscriptWebSocket = (wsUrl: string) => {
                     connectWebSocket();
                 }, RECONNECT_RETRY_INTERVAL_MS);
             }
-        };
+                    };
 
         const connectWebSocket = () => {
             if (wsRef.current) return;
@@ -248,7 +377,7 @@ export const useTranscriptWebSocket = (wsUrl: string) => {
                 console.error("WebSocket error:", error);
                 wsRef.current?.close();
             };
-        };
+                    };
 
         connectWebSocket();
 
@@ -256,6 +385,11 @@ export const useTranscriptWebSocket = (wsUrl: string) => {
         const clearIntervalId = setInterval(() => {
             setFinalizedUtterances([]);
             setCurrentUtterances(new Map());
+            // Also reset sort key tracking so IDs don't collide with stale entries
+            transcriptOrderRef.current.clear();
+            nextTranscriptOrderRef.current = 0;
+            lastFinalRef.current = null;
+            finalizedIdsRef.current.clear();
         }, CLEAR_INTERVAL_MS);
 
         return () => {
@@ -267,8 +401,12 @@ export const useTranscriptWebSocket = (wsUrl: string) => {
                 clearInterval(retryIntervalRef.current);
                 retryIntervalRef.current = null;
             }
+            if (coalesceTimerRef.current) {
+                clearTimeout(coalesceTimerRef.current);
+                coalesceTimerRef.current = null;
+            }
             clearInterval(clearIntervalId);
-        };
+                    };
     }, [wsUrl]);
 
     const utterances = useMemo(() => {
@@ -285,3 +423,4 @@ export const useTranscriptWebSocket = (wsUrl: string) => {
         translationLegend,
     };
 };
+
